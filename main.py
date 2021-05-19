@@ -15,13 +15,13 @@ LEFT_EYEBROW = list(range(22, 27))
 RIGHT_EYE = list(range(36, 42))
 LEFT_EYE = list(range(42, 48))
 NOSE = list(range(27, 36))
+NOSE_TIP = list(range(30,31))
 MOUTH_OUTLINE = list(range(48, 61))
 MOUTH_INNER = list(range(61, 68))
 JAWLINE = list(range(0, 17))
 
 index = ALL
 
-# cv2.waitKey(33) < 0
 while cv2.waitKey(33) < 0:
     ret, frame = capture.read()
     img_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
@@ -51,6 +51,8 @@ while cv2.waitKey(33) < 0:
     if key == 27:
         break
 
+    elif key == ord('0'):
+        index = NOSE_TIP
     elif key == ord('1'):
         index = ALL
     elif key == ord('2'):
