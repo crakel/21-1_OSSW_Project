@@ -1,12 +1,21 @@
 from google.cloud import vision
+from google.cloud.vision_v1 import types
+
 import io
+import os
+
+os.environ['GOOGLE_APPLICATION_CREDENTIALS']='C:/Users/ALLxNEW/Desktop/key.json'
+
 client = vision.ImageAnnotatorClient()
-path ='./Users/ALLxNEW/Desktop.test4.png'
+path ='C:/Users/ALLxNEW/Desktop/test4.png'
 
-with io.open(path, 'rb') as image_file:
-    content = image_file.read()
+file_name=os.path.join(os.path.dirname(__file__), path)
+with io.open(file_name,'rb') as image_file:
+    content=image_file.read()
 
-image = vision.types.Image(content=content)
+image=types.Image(content=content)
+# with io.open(path, 'rb') as image_file:
+#     content = image_file.read()
 
 price_candidate = []
 card_number_candidate = []
