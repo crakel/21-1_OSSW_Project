@@ -1,13 +1,23 @@
 import dlib
 import cv2 as cv
 import numpy as np
+import time
+from PIL import Image as im
+
+
+from google.cloud import vision
+from google.cloud.vision_v1 import types
+import io
+import os
+
 import arcgis
 
 detector = dlib.get_frontal_face_detector()
-
 predictor = dlib.shape_predictor('shape_predictor_68_face_landmarks.dat')
-
 cap = cv.VideoCapture(0)
+
+os.environ['GOOGLE_APPLICATION_CREDENTIALS']='key.json'
+client = vision.ImageAnnotatorClient()
 
 # range는 끝값이 포함안됨
 ALL = list(range(0, 68))
@@ -16,8 +26,7 @@ LEFT_EYEBROW = list(range(22, 27))
 RIGHT_EYE = list(range(36, 42))
 LEFT_EYE = list(range(42, 48))
 NOSE = list(range(27, 36))
-NOSE_TIP=list(range(3
-0,31))
+NOSE_TIP=list(range(30,31))
 MOUTH_OUTLINE = list(range(48, 61))
 MOUTH_INNER = list(range(61, 68))
 JAWLINE = list(range(0, 17))
@@ -92,8 +101,32 @@ while True:
         img_draw = draw(img_draw, location_list)
         for locations in history_list:
             img_draw = draw(img_draw, locations)
-        #img_draw=cv.GaussianBlur(img_draw,(5,5),0)
         cv.imshow('draw_result', img_draw)
+        end_draw=im.fromarray(img_draw)
+        name=time.time()
+        end_draw.save("{}.png".format(name))
+        path="{}.png".format(name)
+        print(path)
+        file_name = os.path.join(os.path.dirname(__file__), path)
+        with io.open(file_name, 'rb') as image_file:
+            content = image_file.read()
+        input_img=types.Image(content=content)
+
+        response = client.text_detection(image=input_img)
+        texts = response.text_annotations
+        print('Texts:')
+
+        for text in texts:
+            content = text.description
+            content = content.replace(',', '')
+            print('\n"{}"'.format(content))
+
+        if response.error.message:
+            raise Exception(
+                '{}\nFor more info on error messages, check: '
+                'https://cloud.google.com/apis/design/errors'.format(
+                    response.error.message))
+
     elif key==ord('0'):
         index=NOSE_TIP
     elif key == ord('1'):
@@ -110,6 +143,7 @@ while True:
         index = JAWLINE
 
 cap.release()
+
 
 #실행 취소 버튼 만들기(눈 연속 깜빡임?)
 #입력 완료 버튼 만들기(눈 오래 감고 있기?)->입력 완료 시 그려진 그림을 내보내기
