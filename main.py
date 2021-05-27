@@ -34,6 +34,7 @@ JAWLINE = list(range(0, 17))
 index = ALL
 location_list=[]
 history_list=[]
+temp=[]
 Draw=True
 
 def draw(img_frame,locations):
@@ -77,7 +78,8 @@ while True:
         if Draw:
             location_list.append((nose_x, nose_y))
         else:
-            history_list.append(location_list.copy())
+            if location_list.copy():
+                history_list.append(location_list.copy())
             location_list.clear()
 
     img_frame=draw(img_frame,location_list)
@@ -85,6 +87,10 @@ while True:
     for locations in history_list:
         img_frame=draw(img_frame, locations)
 
+    if Draw is True:
+        cv.putText(img_frame,"Draw",(550,30),cv.FONT_HERSHEY_SIMPLEX,1,(255,0,0), 2)
+    else:
+        cv.putText(img_frame, "Stop", (550, 30), cv.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
     cv.imshow('result', img_frame)
 
     key = cv.waitKey(1)
@@ -96,6 +102,18 @@ while True:
         history_list.clear()
     elif key==ord('v'): # 이니셜 포인트 지정. 눈 깜빡임 컨트롤로 바꾸기
         Draw = not Draw
+    elif key==ord('b'):
+        if not history_list:
+            Draw=False
+            location_list.clear()
+        else:
+            if Draw==True:
+                Draw=False
+                location_list.clear()
+            else:
+                temp=history_list.pop()
+    elif key==ord('f'):
+        history_list.append(temp)
     elif key==ord('e'):
         Draw=False
         img_draw = draw(img_draw, location_list)
