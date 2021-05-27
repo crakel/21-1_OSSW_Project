@@ -50,9 +50,12 @@ MOUTH_AR_THRESH = 0.79 # 기본 값 0.79
 mouth_open=False
 
 
-COUNTER = 0
-TOTAL = 0
+EYE_COUNTER = 0
+MOUSE_COUNTER = 0
+BLINK = 0
+MOPEN = False
 MODE = False
+mouth_temp = False
 
 (lStart, lEnd) = face_utils.FACIAL_LANDMARKS_IDXS["left_eye"]
 (rStart, rEnd) = face_utils.FACIAL_LANDMARKS_IDXS["right_eye"]
@@ -105,19 +108,19 @@ while True:
         cv.drawContours(img_frame, [rightEyeHull], -1, (0, 255, 0), 1)
 
         if ear < EYE_AR_THRESH:
-            COUNTER += 1
+            EYE_COUNTER += 1
 
         else:
-            if COUNTER >= EYE_AR_CONSEC_FRAMES:
-                TOTAL += 1
-            COUNTER = 0
-            if TOTAL >= 3:
-                Draw = not Draw
-                TOTAL = 0
+            if EYE_COUNTER >= EYE_AR_CONSEC_FRAMES:
+                BLINK += 1
+            EYE_COUNTER = 0
+            if BLINK >= 3:
+                #Draw = not Draw
+                BLINK = 0
 
         cv.putText(
             img_frame,
-            "Blinks: {}".format(TOTAL),
+            "Blinks: {}".format(BLINK),
             (10, 30),
             cv.FONT_HERSHEY_SIMPLEX,
             0.7,
@@ -137,6 +140,8 @@ while True:
         ##############################################################
 
         # 입 처리 부분 ##################################################
+
+
         mouth = mouth_shape[mStart:mEnd]
         mar = mouth_aspect_ratio(mouth)
 
@@ -151,14 +156,24 @@ while True:
             (0, 0, 255),
             2,
         )
-
         if mar > MOUTH_AR_THRESH:
-            mouth_open = True
-        else:
-            mouth_open = False
+            MOUSE_COUNTER += 1
 
-        if mouth_open:
-            Draw = not Draw
+        else:
+            if MOUSE_COUNTER >= 3:
+                Draw = not Draw
+            MOUSE_COUNTER = 0
+
+        #
+        # if mar > MOUTH_AR_THRESH:
+        #     mouth_open = True
+        #     mouth_temp = mouth_open
+        # else:
+        #     mouth_open = False
+        #     mouth_temp = mouth_open
+        #
+        # if mouth_temp == False and mouth_open == True:
+        #     Draw = not Draw
 
         cv.putText(
             img_frame,
