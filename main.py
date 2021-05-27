@@ -2,6 +2,7 @@ import dlib
 import cv2 as cv
 import numpy as np
 from imutils import face_utils
+from scipy.spatial import distance as dist
 
 detector = dlib.get_frontal_face_detector()
 predictor = dlib.shape_predictor('shape_predictor_68_face_landmarks.dat')
@@ -21,29 +22,41 @@ MOUTH_INNER = list(range(61, 68))
 JAWLINE = list(range(0, 17))
 
 
-# 유클리드 거리 계산 함수
-def euclidean_dist(x, y):
-    return np.linalg.norm(x - y)
-
-
 # EAR 계산 함수
 def eye_aspect_ratio(eye):
-    A = euclidean_dist(eye[1], eye[5])
-    B = euclidean_dist(eye[2], eye[4])
-    C = euclidean_dist(eye[0], eye[3])
+    A = dist.euclidean(eye[1], eye[5])
+    B = dist.euclidean(eye[2], eye[4])
+    C = dist.euclidean(eye[0], eye[3])
 
     ear = (A + B) / (2.0 * C)
 
     return ear
 
+# MAR 계산 함수
+def mouth_aspect_ratio(mouth):
+    A = dist.euclidean(mouth[2], mouth[10])  # 51, 59
+    B = dist.euclidean(mouth[4], mouth[8])  # 53, 57
+    C = dist.euclidean(mouth[0], mouth[6])  # 49, 55
 
-EYE_AR_THRESH = 0.3
-EYE_AR_CONSEC_FRAMES = 3
+    mar = (A + B) / (2.0 * C)
+
+    return mar
+
+# EYE_BLINK, MOUTH_OPEN 감지 PARAMS
+EYE_AR_THRESH = 0.3 # 기본 값 0.3
+EYE_AR_CONSEC_FRAMES = 3 # 기본 값 3
+
+MOUTH_AR_THRESH = 0.79 # 기본 값 0.79
+mouth_open=False
+
 
 COUNTER = 0
 TOTAL = 0
+MODE = False
+
 (lStart, lEnd) = face_utils.FACIAL_LANDMARKS_IDXS["left_eye"]
 (rStart, rEnd) = face_utils.FACIAL_LANDMARKS_IDXS["right_eye"]
+(mStart, mEnd) = (49, 68)
 
 index = ALL
 location_list = []
@@ -75,7 +88,10 @@ while True:
     for rect in rects:
         shape = predictor(img_frame, rect)  # 얼굴에서 68개 점 찾기
         eye_shape = face_utils.shape_to_np(shape)
+        mouth_shape = face_utils.shape_to_np(shape)
 
+
+        # 눈 처리 부분 ##################################################
         leftEye = eye_shape[lStart:lEnd]
         rightEye = eye_shape[rStart:rEnd]
         leftEAR = eye_aspect_ratio(leftEye)
@@ -95,6 +111,9 @@ while True:
             if COUNTER >= EYE_AR_CONSEC_FRAMES:
                 TOTAL += 1
             COUNTER = 0
+            if TOTAL >= 3:
+                Draw = not Draw
+                TOTAL = 0
 
         cv.putText(
             img_frame,
@@ -109,7 +128,42 @@ while True:
         cv.putText(
             img_frame,
             "EAR: {:.2f}".format(ear),
-            (300, 30),
+            (500, 30),
+            cv.FONT_HERSHEY_SIMPLEX,
+            0.7,
+            (0, 0, 255),
+            2,
+        )
+        ##############################################################
+
+        # 입 처리 부분 ##################################################
+        mouth = mouth_shape[mStart:mEnd]
+        mar = mouth_aspect_ratio(mouth)
+
+        mouthHull = cv.convexHull(mouth)
+        cv.drawContours(img_frame, [mouthHull], -1, (0, 255, 0), 1)
+        cv.putText(
+            img_frame,
+            "MAR: {:.2f}".format(mar),
+            (500, 100),
+            cv.FONT_HERSHEY_SIMPLEX,
+            0.7,
+            (0, 0, 255),
+            2,
+        )
+
+        if mar > MOUTH_AR_THRESH:
+            mouth_open = True
+        else:
+            mouth_open = False
+
+        if mouth_open:
+            Draw = not Draw
+
+        cv.putText(
+            img_frame,
+            "Draw Mode: {}".format(Draw),
+            (150, 30),
             cv.FONT_HERSHEY_SIMPLEX,
             0.7,
             (0, 0, 255),
