@@ -33,25 +33,28 @@ JAWLINE = list(range(0, 17))
 (rStart, rEnd) = face_utils.FACIAL_LANDMARKS_IDXS["right_eye"]
 (mStart, mEnd) = (49, 68)
 
+
+##########변수 선언
 index = ALL
 location_list = []
 history_list = []
-temp = []
-Draw = True
 
 TIMER_ON = False
 TIMER = 0
 EYE_COUNTER = 0
-MOUSE_COUNTER = 0
+MOUTH_COUNTER = 0
 BLINK = 0
-MOPEN = False
-MODE = False
-mouth_open=False
+MOUTH_LONG = False #입 오래 벌리기
+EYE_LONG = False #눈 오래 감기
+UNDO = False #실행 취소
+Draw = True
 
-# EYE_BLINK, MOUTH_OPEN 감지 PARAMS
-EYE_AR_THRESH = 0.3 # 기본 값 0.3
+# EYE_BLINK, MOUTH_OPEN THRESHHOLD 설정
+EYE_AR_THRESH = 0.25 # 기본 값 0.3
 EYE_AR_CONSEC_FRAMES = 2 # 기본 값 3
 MOUTH_AR_THRESH = 0.79 # 기본 값 0.79
+EYE_AR_LONG_FRAMES=20
+MOUTH_LONG_FRAMES=20
 
 
 # EAR 계산 함수
@@ -80,7 +83,6 @@ def draw(img_frame, locations):
     for i in range(len(locations) - 1):
         if locations[0] is None or locations[1] is None:
             continue
-
         cv.line(img_frame, tuple(locations[i]), tuple(locations[i + 1]), (0, 255, 255), 3)
 
     return img_frame
@@ -117,8 +119,10 @@ while True:
         cv.drawContours(img_frame, [leftEyeHull], -1, (0, 255, 0), 1)
         cv.drawContours(img_frame, [rightEyeHull], -1, (0, 255, 0), 1)
 
-        if ear < EYE_AR_THRESH:
+        if ear < EYE_AR_THRESH:#눈 감음 감지
             EYE_COUNTER += 1
+            if EYE_COUNTER>EYE_AR_LONG_FRAMES:
+                EYE_LONG=True
 
         else:
             if EYE_COUNTER >= EYE_AR_CONSEC_FRAMES:
@@ -127,43 +131,13 @@ while True:
                     TIMER_ON = True
             EYE_COUNTER = 0
 
-        if TIMER >= 15:
+        if TIMER >= 13:
             if BLINK >= 2:
-                Draw = not Draw
-                # if not history_list:
-                #     Draw = False
-                #     location_list.clear()
-                # else:
-                #     if Draw == True:
-                #         Draw = False
-                #         location_list.clear()
-                #     else:
-                #         temp = history_list.pop()
+                UNDO=True
             BLINK = 0
             TIMER_ON = False
             TIMER = 0
             EYE_COUNTER = 0
-
-        # cv.putText(
-        #     img_frame,
-        #     "Blinks: {}".format(BLINK),
-        #     (10, 30),
-        #     cv.FONT_HERSHEY_SIMPLEX,
-        #     0.7,
-        #     (0, 0, 255),
-        #     2,
-        # )
-        #
-        # cv.putText(
-        #     img_frame,
-        #     "TIMER: {}".format(TIMER),
-        #     (10, 300),
-        #     cv.FONT_HERSHEY_SIMPLEX,
-        #     0.7,
-        #     (0, 0, 255),
-        #     2,
-        # )
-
 
         cv.putText(
             img_frame,
@@ -192,22 +166,16 @@ while True:
             2,
         )
         if mar > MOUTH_AR_THRESH:
-            MOUSE_COUNTER += 1
+            MOUTH_COUNTER += 1
+            if MOUTH_COUNTER>MOUTH_LONG_FRAMES:
+                MOUTH_LONG=True
 
         else:
-            if MOUSE_COUNTER >= 3:
+            if MOUTH_COUNTER >= 3:
                 Draw = not Draw
-            MOUSE_COUNTER = 0
+            MOUTH_COUNTER = 0
 
-        # cv.putText(
-        #     img_frame,
-        #     "Draw Mode: {}".format(Draw),
-        #     (150, 30),
-        #     cv.FONT_HERSHEY_SIMPLEX,
-        #     0.7,
-        #     (0, 0, 255),
-        #     2,
-        # )
+
 
         # 그리는 부분 ############################################
         list_points = []
@@ -216,20 +184,14 @@ while True:
 
         list_points = np.array(list_points)
 
-        # for i, pt in enumerate(list_points[index]):
-        #     pt_pos = (pt[0], pt[1])
-        #     cv.circle(img_frame, pt_pos, 2, (0, 255, 0), -1)
-        #
-        # cv.rectangle(img_frame, (face.left(), face.top()), (face.right(), face.bottom()),
-        #              (0, 0, 255), 3)
-
         nose_x = list_points[NOSE_TIP][0][0]
         nose_y = list_points[NOSE_TIP][0][1]
 
         if Draw:
             location_list.append((nose_x, nose_y))
         else:
-            history_list.append(location_list.copy())
+            if location_list.copy():
+                history_list.append(location_list.copy())
             location_list.clear()
 
     # 얼굴 인식 벗어남 ######################################
@@ -263,6 +225,25 @@ while True:
         2,
     )
 
+    cv.putText(
+        img_frame,
+        "eye long: {}".format(EYE_LONG),
+        (100, 60),
+        cv.FONT_HERSHEY_SIMPLEX,
+        0.7,
+        (0, 0, 255),
+        2,
+    )
+    cv.putText(
+        img_frame,
+        "mouth long: {}".format(MOUTH_LONG),
+        (150, 100),
+        cv.FONT_HERSHEY_SIMPLEX,
+        0.7,
+        (0, 0, 255),
+        2,
+    )
+
     img_frame = draw(img_frame, location_list)
 
     for locations in history_list:
@@ -275,14 +256,16 @@ while True:
     if key == 27:  # ESC
         break
 
-    elif key == 32:  # space bar
+    elif key == 32 or MOUTH_LONG:  # space bar
+        MOUTH_LONG=False
         location_list.clear()
         history_list.clear()
 
     elif key == ord('v'):  # 이니셜 포인트 지정. 눈 깜빡임 컨트롤로 바꾸기
         Draw = not Draw
 
-    elif key == ord('b'):
+    elif key == ord('b') or UNDO:
+        UNDO=False
         if not history_list:
             Draw=False
             location_list.clear()
@@ -291,13 +274,11 @@ while True:
                 Draw=False
                 location_list.clear()
             else:
-                temp=history_list.pop()
+                history_list.pop()
 
-    elif key==ord('f'):
-        history_list.append(temp)
-
-    elif key==ord('e'):
+    elif key==ord('e') or EYE_LONG:
         Draw=False
+        EYE_LONG=False
         img_draw = draw(img_draw, location_list)
         for locations in history_list:
             img_draw = draw(img_draw, locations)
@@ -327,19 +308,19 @@ while True:
                 'https://cloud.google.com/apis/design/errors'.format(
                     response.error.message))
 
-    elif key == ord('0'):
-        index = NOSE_TIP
-    elif key == ord('1'):
-        index = ALL
-    elif key == ord('2'):
-        index = LEFT_EYEBROW + RIGHT_EYEBROW
-    elif key == ord('3'):
-        index = LEFT_EYE + RIGHT_EYE
-    elif key == ord('4'):
-        index = NOSE
-    elif key == ord('5'):
-        index = MOUTH_OUTLINE + MOUTH_INNER
-    elif key == ord('6'):
-        index = JAWLINE
+    # elif key == ord('0'):
+    #     index = NOSE_TIP
+    # elif key == ord('1'):
+    #     index = ALL
+    # elif key == ord('2'):
+    #     index = LEFT_EYEBROW + RIGHT_EYEBROW
+    # elif key == ord('3'):
+    #     index = LEFT_EYE + RIGHT_EYE
+    # elif key == ord('4'):
+    #     index = NOSE
+    # elif key == ord('5'):
+    #     index = MOUTH_OUTLINE + MOUTH_INNER
+    # elif key == ord('6'):
+    #     index = JAWLINE
 
 cap.release()
