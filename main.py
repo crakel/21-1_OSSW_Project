@@ -1,13 +1,22 @@
 import dlib
 import cv2 as cv
 import numpy as np
+import time
+from PIL import Image as im
 from imutils import face_utils
 from scipy.spatial import distance as dist
+from google.cloud import vision
+from google.cloud.vision_v1 import types
+import io
+import os
 
 detector = dlib.get_frontal_face_detector()
 predictor = dlib.shape_predictor('shape_predictor_68_face_landmarks.dat')
 
 cap = cv.VideoCapture(0)
+
+os.environ['GOOGLE_APPLICATION_CREDENTIALS']='key.json'
+client = vision.ImageAnnotatorClient()
 
 # range는 끝값이 포함안됨
 ALL = list(range(0, 68))
@@ -20,6 +29,29 @@ NOSE_TIP = list(range(30, 31))
 MOUTH_OUTLINE = list(range(48, 61))
 MOUTH_INNER = list(range(61, 68))
 JAWLINE = list(range(0, 17))
+(lStart, lEnd) = face_utils.FACIAL_LANDMARKS_IDXS["left_eye"]
+(rStart, rEnd) = face_utils.FACIAL_LANDMARKS_IDXS["right_eye"]
+(mStart, mEnd) = (49, 68)
+
+index = ALL
+location_list = []
+history_list = []
+temp = []
+Draw = True
+
+TIMER_ON = False
+TIMER = 0
+EYE_COUNTER = 0
+MOUSE_COUNTER = 0
+BLINK = 0
+MOPEN = False
+MODE = False
+mouth_open=False
+
+# EYE_BLINK, MOUTH_OPEN 감지 PARAMS
+EYE_AR_THRESH = 0.3 # 기본 값 0.3
+EYE_AR_CONSEC_FRAMES = 2 # 기본 값 3
+MOUTH_AR_THRESH = 0.79 # 기본 값 0.79
 
 
 # EAR 계산 함수
@@ -32,6 +64,7 @@ def eye_aspect_ratio(eye):
 
     return ear
 
+
 # MAR 계산 함수
 def mouth_aspect_ratio(mouth):
     A = dist.euclidean(mouth[2], mouth[10])  # 51, 59
@@ -41,30 +74,6 @@ def mouth_aspect_ratio(mouth):
     mar = (A + B) / (2.0 * C)
 
     return mar
-
-# EYE_BLINK, MOUTH_OPEN 감지 PARAMS
-EYE_AR_THRESH = 0.3 # 기본 값 0.3
-EYE_AR_CONSEC_FRAMES = 3 # 기본 값 3
-
-MOUTH_AR_THRESH = 0.79 # 기본 값 0.79
-mouth_open=False
-
-
-EYE_COUNTER = 0
-MOUSE_COUNTER = 0
-BLINK = 0
-MOPEN = False
-MODE = False
-mouth_temp = False
-
-(lStart, lEnd) = face_utils.FACIAL_LANDMARKS_IDXS["left_eye"]
-(rStart, rEnd) = face_utils.FACIAL_LANDMARKS_IDXS["right_eye"]
-(mStart, mEnd) = (49, 68)
-
-index = ALL
-location_list = []
-history_list = []
-Draw = True
 
 
 def draw(img_frame, locations):
@@ -78,18 +87,19 @@ def draw(img_frame, locations):
 
 
 while True:
+    if TIMER_ON:
+        TIMER += 1
 
     ret, img_frame = cap.read()
     h, w, c = img_frame.shape
-
     img_draw = np.ones((h, w), dtype=np.uint8) * 255
     img_frame = cv.flip(img_frame, 1)
     img_gray = cv.cvtColor(img_frame, cv.COLOR_BGR2GRAY)
 
-    rects = detector(img_gray, 0)
+    dets = detector(img_gray, 0)
 
-    for rect in rects:
-        shape = predictor(img_frame, rect)  # 얼굴에서 68개 점 찾기
+    for face in dets:
+        shape = predictor(img_frame, face)  # 얼굴에서 68개 점 찾기
         eye_shape = face_utils.shape_to_np(shape)
         mouth_shape = face_utils.shape_to_np(shape)
 
@@ -113,20 +123,47 @@ while True:
         else:
             if EYE_COUNTER >= EYE_AR_CONSEC_FRAMES:
                 BLINK += 1
+                if BLINK == 1:
+                    TIMER_ON = True
             EYE_COUNTER = 0
-            if BLINK >= 3:
-                #Draw = not Draw
-                BLINK = 0
 
-        cv.putText(
-            img_frame,
-            "Blinks: {}".format(BLINK),
-            (10, 30),
-            cv.FONT_HERSHEY_SIMPLEX,
-            0.7,
-            (0, 0, 255),
-            2,
-        )
+        if TIMER >= 15:
+            if BLINK >= 2:
+                Draw = not Draw
+                # if not history_list:
+                #     Draw = False
+                #     location_list.clear()
+                # else:
+                #     if Draw == True:
+                #         Draw = False
+                #         location_list.clear()
+                #     else:
+                #         temp = history_list.pop()
+            BLINK = 0
+            TIMER_ON = False
+            TIMER = 0
+            EYE_COUNTER = 0
+
+        # cv.putText(
+        #     img_frame,
+        #     "Blinks: {}".format(BLINK),
+        #     (10, 30),
+        #     cv.FONT_HERSHEY_SIMPLEX,
+        #     0.7,
+        #     (0, 0, 255),
+        #     2,
+        # )
+        #
+        # cv.putText(
+        #     img_frame,
+        #     "TIMER: {}".format(TIMER),
+        #     (10, 300),
+        #     cv.FONT_HERSHEY_SIMPLEX,
+        #     0.7,
+        #     (0, 0, 255),
+        #     2,
+        # )
+
 
         cv.putText(
             img_frame,
@@ -140,8 +177,6 @@ while True:
         ##############################################################
 
         # 입 처리 부분 ##################################################
-
-
         mouth = mouth_shape[mStart:mEnd]
         mar = mouth_aspect_ratio(mouth)
 
@@ -164,26 +199,15 @@ while True:
                 Draw = not Draw
             MOUSE_COUNTER = 0
 
-        #
-        # if mar > MOUTH_AR_THRESH:
-        #     mouth_open = True
-        #     mouth_temp = mouth_open
-        # else:
-        #     mouth_open = False
-        #     mouth_temp = mouth_open
-        #
-        # if mouth_temp == False and mouth_open == True:
-        #     Draw = not Draw
-
-        cv.putText(
-            img_frame,
-            "Draw Mode: {}".format(Draw),
-            (150, 30),
-            cv.FONT_HERSHEY_SIMPLEX,
-            0.7,
-            (0, 0, 255),
-            2,
-        )
+        # cv.putText(
+        #     img_frame,
+        #     "Draw Mode: {}".format(Draw),
+        #     (150, 30),
+        #     cv.FONT_HERSHEY_SIMPLEX,
+        #     0.7,
+        #     (0, 0, 255),
+        #     2,
+        # )
 
         # 그리는 부분 ############################################
         list_points = []
@@ -208,6 +232,37 @@ while True:
             history_list.append(location_list.copy())
             location_list.clear()
 
+    # 얼굴 인식 벗어남 ######################################
+    cv.putText(
+        img_frame,
+        "Blinks: {}".format(BLINK),
+        (10, 30),
+        cv.FONT_HERSHEY_SIMPLEX,
+        0.7,
+        (0, 0, 255),
+        2,
+    )
+
+    cv.putText(
+        img_frame,
+        "TIMER: {}".format(TIMER),
+        (10, 300),
+        cv.FONT_HERSHEY_SIMPLEX,
+        0.7,
+        (0, 0, 255),
+        2,
+    )
+
+    cv.putText(
+        img_frame,
+        "Draw Mode: {}".format(Draw),
+        (150, 30),
+        cv.FONT_HERSHEY_SIMPLEX,
+        0.7,
+        (0, 0, 255),
+        2,
+    )
+
     img_frame = draw(img_frame, location_list)
 
     for locations in history_list:
@@ -227,13 +282,50 @@ while True:
     elif key == ord('v'):  # 이니셜 포인트 지정. 눈 깜빡임 컨트롤로 바꾸기
         Draw = not Draw
 
-    elif key == ord('e'):
-        Draw = False
+    elif key == ord('b'):
+        if not history_list:
+            Draw=False
+            location_list.clear()
+        else:
+            if Draw==True:
+                Draw=False
+                location_list.clear()
+            else:
+                temp=history_list.pop()
+
+    elif key==ord('f'):
+        history_list.append(temp)
+
+    elif key==ord('e'):
+        Draw=False
         img_draw = draw(img_draw, location_list)
         for locations in history_list:
             img_draw = draw(img_draw, locations)
-        # img_draw=cv.GaussianBlur(img_draw,(5,5),0)
         cv.imshow('draw_result', img_draw)
+        end_draw=im.fromarray(img_draw)
+        name=time.time()
+        end_draw.save("{}.png".format(name))
+        path="{}.png".format(name)
+        print(path)
+        file_name = os.path.join(os.path.dirname(__file__), path)
+        with io.open(file_name, 'rb') as image_file:
+            content = image_file.read()
+        input_img=types.Image(content=content)
+
+        response = client.text_detection(image=input_img)
+        texts = response.text_annotations
+        print('Texts:')
+
+        for text in texts:
+            content = text.description
+            content = content.replace(',', '')
+            print('\n"{}"'.format(content))
+
+        if response.error.message:
+            raise Exception(
+                '{}\nFor more info on error messages, check: '
+                'https://cloud.google.com/apis/design/errors'.format(
+                    response.error.message))
 
     elif key == ord('0'):
         index = NOSE_TIP
@@ -251,9 +343,3 @@ while True:
         index = JAWLINE
 
 cap.release()
-
-#실행 취소 버튼 만들기(눈 연속 깜빡임?)
-#입력 완료 버튼 만들기(눈 오래 감고 있기?)->입력 완료 시 그려진 그림을 내보내기
-#생각보다 움직임의 범위가 커야 함
-#고개를 숙이거나 좌우로 고개를 바꾸면 인식률이 떨어짐
-#line smoothing
