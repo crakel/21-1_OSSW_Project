@@ -14,11 +14,12 @@ detector = dlib.get_frontal_face_detector()
 predictor = dlib.shape_predictor('shape_predictor_68_face_landmarks.dat')
 
 cap = cv.VideoCapture(0)
+cap.set(cv.CAP_PROP_FRAME_WIDTH, 640)
+cap.set(cv.CAP_PROP_FRAME_HEIGHT, 480)
 
 os.environ['GOOGLE_APPLICATION_CREDENTIALS']='key.json'
 client = vision.ImageAnnotatorClient()
 
-# range는 끝값이 포함안됨
 ALL = list(range(0, 68))
 RIGHT_EYEBROW = list(range(17, 22))
 LEFT_EYEBROW = list(range(22, 27))
@@ -31,7 +32,7 @@ MOUTH_INNER = list(range(61, 68))
 JAWLINE = list(range(0, 17))
 (lStart, lEnd) = face_utils.FACIAL_LANDMARKS_IDXS["left_eye"]
 (rStart, rEnd) = face_utils.FACIAL_LANDMARKS_IDXS["right_eye"]
-(mStart, mEnd) = (49, 68)
+(mStart, mEnd)  = face_utils.FACIAL_LANDMARKS_IDXS["mouth"]
 
 
 ##########변수 선언
@@ -50,12 +51,11 @@ UNDO = False #실행 취소
 Draw = True
 
 # EYE_BLINK, MOUTH_OPEN THRESHHOLD 설정
-EYE_AR_THRESH = 0.25 # 기본 값 0.3
-EYE_AR_CONSEC_FRAMES = 2 # 기본 값 3
-MOUTH_AR_THRESH = 0.79 # 기본 값 0.79
-EYE_AR_LONG_FRAMES=20
-MOUTH_LONG_FRAMES=20
-
+EYE_AR_THRESH = 0.255 # 기본 값 0.3
+EYE_AR_CONSEC_FRAMES = 2 # 기본 값 3 v
+MOUTH_AR_THRESH = 0.68 # 기본 값 0.79
+EYE_AR_LONG_FRAMES = 20
+MOUTH_LONG_FRAMES = 20
 
 # EAR 계산 함수
 def eye_aspect_ratio(eye):
@@ -70,9 +70,10 @@ def eye_aspect_ratio(eye):
 
 # MAR 계산 함수
 def mouth_aspect_ratio(mouth):
-    A = dist.euclidean(mouth[2], mouth[10])  # 51, 59
-    B = dist.euclidean(mouth[4], mouth[8])  # 53, 57
-    C = dist.euclidean(mouth[0], mouth[6])  # 49, 55
+
+    A = dist.euclidean(mouth[2], mouth[10])
+    B = dist.euclidean(mouth[4], mouth[8])
+    C = dist.euclidean(mouth[0], mouth[6])
 
     mar = (A + B) / (2.0 * C)
 
@@ -95,10 +96,12 @@ while True:
     ret, img_frame = cap.read()
     h, w, c = img_frame.shape
     img_draw = np.ones((h, w), dtype=np.uint8) * 255
+    clahe = cv.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
     img_frame = cv.flip(img_frame, 1)
     img_gray = cv.cvtColor(img_frame, cv.COLOR_BGR2GRAY)
+    clahe_image = clahe.apply(img_gray)
 
-    dets = detector(img_gray, 0)
+    dets = detector(clahe_image, 0)
 
     for face in dets:
         shape = predictor(img_frame, face)  # 얼굴에서 68개 점 찾기
@@ -131,7 +134,7 @@ while True:
                     TIMER_ON = True
             EYE_COUNTER = 0
 
-        if TIMER >= 13:
+        if TIMER >= 15:
             if BLINK >= 2:
                 UNDO=True
             BLINK = 0
@@ -159,7 +162,7 @@ while True:
         cv.putText(
             img_frame,
             "MAR: {:.2f}".format(mar),
-            (500, 100),
+            (500, 60),
             cv.FONT_HERSHEY_SIMPLEX,
             0.7,
             (0, 0, 255),
@@ -194,6 +197,55 @@ while True:
                 history_list.append(location_list.copy())
             location_list.clear()
 
+        # 얼굴 회전에 사용할 변수 지정 ###############################
+        # x = face.left()
+        # y = face.top()
+        # x1 = face.right()
+        # y1 = face.bottom()
+        # # d 값 저장
+        # bdx = x - (x1 - x) / 2
+        # bdy = y - (y1 - y) / 2
+        # bdx1 = x1 + (x1 - x) / 2
+        # bdy1 = y1 + (y1 - y) / 2
+        # # 큰 d값 저장
+        # midx = (x + x1) / 2
+        # midy = (y + y1) / 2
+        # # d의 가운데 포인트 저장
+        #
+        # shape_rot = predictor(img_frame, face)
+        #
+        # rex = shape_rot.part(45).x
+        # rey = shape_rot.part(45).y
+        # lex = shape_rot.part(36).x
+        # ley = shape_rot.part(36).y
+        #
+        # mex = int(lex + (rex - lex) / 2)
+        # mey = int(ley + (rey - ley) / 2)
+        # # 눈의 양끝점 좌표 설정 및 눈 사이 가운데 점 설정
+        #
+        # tanx = mex - lex
+        # tany = ley - mey
+        # tan = tany / tanx
+        # # tan 값 계산
+        # angle = np.arctan(tan)
+        # degree = np.degrees(angle)
+        # # 각도 계산
+        #
+        # rsd_1 = rotate(x, y)
+        # rsd_2 = rotate(x1, y)
+        # rsd_3 = rotate(x, y1)
+        # rsd_4 = rotate(x1, y1)
+        # d2_1 = rotate(bdx, bdy)
+        # d2_2 = rotate(bdx1, bdy)
+        # d2_3 = rotate(bdx, bdy1)
+        # d2_4 = rotate(bdx1, bdy1)
+        # # 좌표 회전
+        #
+        # pts1 = np.float32([[d2_1[0], d2_1[1]], [d2_2[0], d2_2[1]], [d2_3[0], d2_3[1]], [d2_4[0], d2_4[1]]])
+        # pts2 = np.float32([[0, 0], [800, 0], [0, 800], [800, 800]])
+        # M = cv.getPerspectiveTransform(pts1, pts2)
+        # img_frame = cv.warpPerspective(img_frame, M, (800, 800))
+
     # 얼굴 인식 벗어남 ######################################
     cv.putText(
         img_frame,
@@ -208,7 +260,7 @@ while True:
     cv.putText(
         img_frame,
         "TIMER: {}".format(TIMER),
-        (10, 300),
+        (10, 90),
         cv.FONT_HERSHEY_SIMPLEX,
         0.7,
         (0, 0, 255),
@@ -228,7 +280,7 @@ while True:
     cv.putText(
         img_frame,
         "eye long: {}".format(EYE_LONG),
-        (100, 60),
+        (150, 60),
         cv.FONT_HERSHEY_SIMPLEX,
         0.7,
         (0, 0, 255),
@@ -237,7 +289,7 @@ while True:
     cv.putText(
         img_frame,
         "mouth long: {}".format(MOUTH_LONG),
-        (150, 100),
+        (150, 90),
         cv.FONT_HERSHEY_SIMPLEX,
         0.7,
         (0, 0, 255),
@@ -292,7 +344,6 @@ while True:
         with io.open(file_name, 'rb') as image_file:
             content = image_file.read()
         input_img=types.Image(content=content)
-
         response = client.text_detection(image=input_img)
         texts = response.text_annotations
         print('Texts:')
@@ -308,19 +359,19 @@ while True:
                 'https://cloud.google.com/apis/design/errors'.format(
                     response.error.message))
 
-    # elif key == ord('0'):
-    #     index = NOSE_TIP
-    # elif key == ord('1'):
-    #     index = ALL
-    # elif key == ord('2'):
-    #     index = LEFT_EYEBROW + RIGHT_EYEBROW
-    # elif key == ord('3'):
-    #     index = LEFT_EYE + RIGHT_EYE
-    # elif key == ord('4'):
-    #     index = NOSE
-    # elif key == ord('5'):
-    #     index = MOUTH_OUTLINE + MOUTH_INNER
-    # elif key == ord('6'):
-    #     index = JAWLINE
+    elif key == ord('0'):
+        index = NOSE_TIP
+    elif key == ord('1'):
+        index = ALL
+    elif key == ord('2'):
+        index = LEFT_EYEBROW + RIGHT_EYEBROW
+    elif key == ord('3'):
+        index = LEFT_EYE + RIGHT_EYE
+    elif key == ord('4'):
+        index = NOSE
+    elif key == ord('5'):
+        index = MOUTH_OUTLINE + MOUTH_INNER
+    elif key == ord('6'):
+        index = JAWLINE
 
 cap.release()
